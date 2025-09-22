@@ -1,0 +1,26 @@
+# STM32CubeIDE build folders
+Debug/
+Release/
+.build/
+
+# Object files / maps / binaries
+*.o
+*.elf
+*.map
+*.lst
+
+# IDE / local configs
+.settings/
+.metadata/
+.vscode/
+.idea/
+*.launch
+*.log
+
+# CubeMX auto files / backups
+*.bak
+*.tmp
+*.swp
+*.user
+.ioc-local
+mxconfig/**
