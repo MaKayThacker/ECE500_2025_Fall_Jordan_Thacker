@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usart.h"
 #include <stdio.h>
 #ifndef RETARGET_H
 #define RETARGET_H
@@ -84,15 +85,17 @@ int main(void)
 
   /* Configure the system clock */
   SystemClock_Config();
-
+  USR_USART2_UART_Init(115200);
+  setvbuf(stdout, NULL, _IONBF, 0);
   /* USER CODE BEGIN SysInit */
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
+
   /* USER CODE BEGIN 2 */
-  printf("\r\n=== ECE-500 Printf + LED Demo ===\r\n");
+  printf("\r\n=== ECE-500 New USART and Print Char Demo ===\r\n");
+  uint32_t counter = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -102,9 +105,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    printf("Hello from ECE-500 — McKay Thacker\r\n");
-    HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
-    HAL_Delay(1000);
+      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);   // Example: toggle LD2 (check your board pin!)
+      printf("Loop counter: %lu\n", counter++);
+      HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
