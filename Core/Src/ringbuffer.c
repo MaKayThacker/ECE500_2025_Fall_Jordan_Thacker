@@ -1,104 +1,101 @@
 #include "ringbuffer.h"
+#include <string.h>
 #include <stdio.h>
 
-/* Retarget prototypes from your project (already provided) */
-int __io_putchar(int ch);
+/* --- Terminal characters ------------------------------------------------ */
+#define CR  '\r'
+#define LF  '\n'
 
-/* Internal storage (global, fixed size) */
-static char     rb[RING_CAP];
-static uint8_t  head;     // next write pos
-static uint8_t  count;    // number of valid bytes (0..RING_CAP)
+/* --- Ring buffer state --------------------------------------------------- */
+static volatile char     ring_buffer[RING_CAP];
+static volatile uint16_t head_index     = 0;
+static volatile uint16_t tail_index     = 0;
+static volatile uint16_t buffer_count   = 0;
+static volatile bool     overflow_flag  = false;
 
-/* Small helpers */
-static inline uint8_t modulo_dec(uint8_t x, uint8_t m) { return (uint8_t)((x + m - 1u) % m); }
-static inline uint8_t modulo_inc(uint8_t x, uint8_t m) { return (uint8_t)((x + 1u) % m); }
+static inline uint16_t next_index(uint16_t idx) { return (uint16_t)((idx + 1) % RING_CAP); }
 
-void ring_init(void) {
-    head  = 0u;
-    count = 0u;
+/* --- Add one character -------------------------------------------------- */
+void ring_add(char input_char, bool *did_overflow) {
+    if (buffer_count == RING_CAP) {
+        tail_index = next_index(tail_index); // overwrite oldest
+        overflow_flag = true;
+    } else {
+        buffer_count++;
+    }
+    ring_buffer[head_index] = input_char;
+    head_index = next_index(head_index);
+    if (did_overflow) *did_overflow = overflow_flag;
 }
 
-int ring_count(void) {
-    return (int)count;
+/* --- Handle backspace editing ------------------------------------------- */
+void ring_backspace(void) {
+    if (!buffer_count) return;
+    uint16_t prev_index = (head_index == 0) ? (RING_CAP - 1) : (head_index - 1);
+    char last_char = ring_buffer[prev_index];
+    if (last_char != CR && last_char != LF) {
+        head_index = prev_index;
+        buffer_count--;
+    }
 }
 
-int ring_is_empty(void) {
-    return (count == 0u);
+/* --- Detect if a full line exists --------------------------------------- */
+bool ring_has_line(void) {
+    if (!buffer_count) return false;
+    uint16_t i = tail_index;
+    for (uint16_t c = 0; c < buffer_count; ++c) {
+        char ch = ring_buffer[i];
+        if (ch == CR || ch == LF) return true;
+        i = next_index(i);
+    }
+    return false;
 }
 
-/* Erase last displayed char on terminal: backspace, space, backspace */
-static void echo_erase_one(void) {
-    __io_putchar('\b');
-    __io_putchar(' ');
-    __io_putchar('\b');
+/* --- Pop a line into dst (strip CR/LF) ---------------------------------- */
+int ring_pop_line(char *dst, size_t dst_size) {
+    if (!ring_has_line() || !dst || !dst_size) return -1;
+
+    size_t write_len = 0;
+    while (buffer_count) {
+        char current_char = ring_buffer[tail_index];
+        tail_index = next_index(tail_index);
+        buffer_count--;
+
+        if (current_char == CR || current_char == LF) {
+            if (buffer_count && ring_buffer[tail_index] == LF) {
+                tail_index = next_index(tail_index);
+                buffer_count--;
+            }
+            break; // end of line
+        }
+        if (write_len + 1 < dst_size) dst[write_len++] = current_char;
+    }
+    dst[write_len] = '\0';
+    return (int)write_len;
 }
 
-/* Dump the entire ring with indices (debug view) */
+/* --- Debug dump --------------------------------------------------------- */
 void ring_dump(void) {
-    printf("Ring (cap=%d, count=%d):\r\n", RING_CAP, ring_count());
-    for (int i = 0; i < RING_CAP; ++i) {
-        char c = rb[i];
-        if (c == 0) c = '.'; // show empty as '.'
-        printf("[%02d] '%c'\r\n", i, c);
+    printf("[ring] cap=%d count=%u head=%u tail=%u overflow=%d\r\n",
+           (int)RING_CAP, (unsigned)buffer_count,
+           (unsigned)head_index, (unsigned)tail_index, overflow_flag);
+}
+
+/* --- Normalize after parse ---------------------------------------------- */
+void ring_reset_after_parse(void) {
+    if (buffer_count == 0) {
+        head_index = tail_index = 0;
+        overflow_flag = false;
     }
 }
 
-/* The required function:
-   - Stores ASCII chars into ring
-   - Wraps/overwrites oldest when full
-   - Echoes typed characters in real time
-   - Handles Backspace ('\b' or 0x7F): remove last
-   - Handles Enter ('\r' or '\n'): newline + dump
-*/
-void ring_add(char ch) {
-    /* Normalize Enter (treat LF as CR) */
-    if (ch == '\n') ch = '\r';
+/* --- Clear buffer ------------------------------------------------------- */
+void ring_clear(void) {
+    head_index = tail_index = buffer_count = 0;
+    overflow_flag = false;
+}
 
-    /* Handle Backspace (both BKSP 0x08 and DEL 0x7F) */
-    if (ch == '\b' || (unsigned char)ch == 0x7F) {
-        if (count > 0u) {
-            /* Remove last from ring (the item before head) */
-            head = modulo_dec(head, RING_CAP);
-            rb[head] = 0;        // optional: clear for nicer dump
-            count--;
-            /* Erase on Tera Term */
-            echo_erase_one();
-        }
-        return;
-    }
-
-    /* Handle Enter: print line, dump, and prompt */
-    if (ch == '\r') {
-        /* Visual newline on terminal */
-        __io_putchar('\r');
-        __io_putchar('\n');
-
-        /* Show what’s stored */
-        ring_dump();
-
-        /* New prompt */
-        printf("\r\n> ");
-        return;
-    }
-
-    /* Printable range (space..~); ignore others */
-    if ((unsigned char)ch >= 32u && (unsigned char)ch <= 126u) {
-        /* Overwrite policy:
-           - write at head
-           - advance head
-           - if already full, the oldest is lost (we just reduce net count change)
-        */
-        rb[head] = ch;
-        head = modulo_inc(head, RING_CAP);
-        if (count < RING_CAP) {
-            count++;
-        } else {
-            /* Overwrite oldest: nothing extra to do since we don’t track tail,
-               we just keep the last RING_CAP characters by moving head forward.
-               The “lost” char is intentionally discarded per spec. */
-        }
-
-        /* Echo the character back in real time */
-        __io_putchar(ch);
-    }
+/* --- Init alias --------------------------------------------------------- */
+void ring_init(void) {
+    ring_clear();
 }
