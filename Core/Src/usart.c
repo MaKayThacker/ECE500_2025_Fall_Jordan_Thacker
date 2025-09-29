@@ -1,6 +1,8 @@
 #include "main.h"
 #include "usart.h"
 #include "ringbuffer.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 UART_HandleTypeDef huart2;
 
@@ -14,11 +16,11 @@ static inline void uart2_clear_rx_errors(void)
     }
 }
 
-/* Optional: direct TX putchar used by retarget.c (kept here for reference) */
+/* Optional: direct TX putchar used by retarget.c */
 void USR_USART2_WriteByte(uint8_t b)
 {
 #ifdef USART_ISR_TXE_TXFNF
-    while (!(USART2->ISR & USART_ISR_TXE_TXFNF)) { /* wait for TX FIFO not full */ }
+    while (!(USART2->ISR & USART_ISR_TXE_TXFNF)) { }
 #else
     while (!(USART2->ISR & USART_ISR_TXE)) { }
 #endif
@@ -103,11 +105,11 @@ void USART2_IRQHandler(void)
     /* Errors? Clear and keep going */
     uart2_clear_rx_errors();
 
-    /* Clear other IRQ reasons via HAL if needed (not strictly necessary here) */
+    /* Let HAL clear any other flags it expects */
     HAL_UART_IRQHandler(&huart2);
 }
 
-/* Polled read still available for compatibility (rarely used now) */
+/* Polled read still available for compatibility (rare) */
 bool USR_USART2_TryRead(uint8_t *ch)
 {
     if (!ch) return false;

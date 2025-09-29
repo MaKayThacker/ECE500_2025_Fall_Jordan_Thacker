@@ -1,5 +1,7 @@
 #include "ringbuffer.h"
 #include <stdio.h>
+#include <stdint.h>
+#include <stddef.h>
 
 /* Retarget prototype */
 int __io_putchar(int ch);
@@ -54,7 +56,7 @@ void ring_add(char ch){
 
     if (u == '\r'){
         push_byte('\r'); lines++; last_was_cr=1u;
-        /* keep echo minimal so IRQ path isn’t delayed */
+        /* minimal echo so IRQ stays quick */
         __io_putchar('\r'); __io_putchar('\n');
         return;
     }
