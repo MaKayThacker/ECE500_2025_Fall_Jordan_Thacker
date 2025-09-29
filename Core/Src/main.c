@@ -1,42 +1,119 @@
 #include "main.h"
 #include "usart.h"
 #include "ringbuffer.h"
+#include <string.h>
 #include <stdio.h>
 
-#ifndef RETARGET_H
-#define RETARGET_H
+/* ===== Retarget (provided elsewhere) ===== */
 int __io_putchar(int ch);
-int __io_write(const char *buf, int len);
-#endif
 
-extern UART_HandleTypeDef huart2;
-
+/* ===== Forward decls for CubeMX-style statics ===== */
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 
+/* ===== Optional: LED pin on PA5 ===== */
+#ifndef LED_GPIO_Port
+#define LED_GPIO_Port GPIOA
+#endif
+#ifndef LED_Pin
+#define LED_Pin GPIO_PIN_5
+#endif
+
+/* ===== Parser return codes per rubric ===== */
+#define CMD_STOP   0
+#define CMD_START  1
+#define CMD_CLEAR  2
+#define CMD_BAD   -1
+#define CMD_OVF   -2
+
+/* Parse a single, NUL-terminated line (no trailing '\r'). */
+static int parser(const char *s)
+{
+  if (!s) return CMD_BAD;
+
+  if (!strcmp(s, "STOP") || !strcmp(s, "stop"))
+    return CMD_STOP;
+
+  if (!strcmp(s, "START") || !strcmp(s, "start"))
+    return CMD_START;
+
+  if (!strcmp(s, "CLEAR") || !strcmp(s, "clear"))
+    return CMD_CLEAR;
+
+  return CMD_BAD;
+}
+
+/* After parsing a line, reset the "line buffer indices".
+   With our ring implementation, ring_read_line() already advances the read indices.
+   We keep this function to match the rubric wording. */
+static void reset_after_parse(void)
+{
+  /* no-op: consumption already performed by ring_read_line() */
+}
+
+/* Application reaction to parsed command */
+static void act_on(int code, const char *raw)
+{
+  switch (code) {
+    case CMD_STOP:
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+      printf("STOP command is received in Tera Term\r\n");
+      break;
+    case CMD_START:
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+      printf("START command is received in Tera Term\r\n");
+      break;
+    case CMD_CLEAR:
+      printf("CLEAR command is received in Tera Term\r\n");
+      break;
+    case CMD_OVF:
+      printf("ERROR: buffer overflow\r\n");
+      break;
+    default:
+      printf("undefined command\r\n");
+      break;
+  }
+}
+
+/* ======= Main ============================================================ */
 int main(void)
 {
   HAL_Init();
   SystemClock_Config();
   USR_USART2_UART_Init(115200);
+  /* Make printf unbuffered */
   setvbuf(stdout, NULL, _IONBF, 0);
+
   MX_GPIO_Init();
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
   ring_init();
+
   printf("\r\n=== ECE-500 Ring Buffer Demo ===\r\n> ");
-///////////////////////////////////////////////////////////////////////////////////
-  while (1)
+
+  for (;;)
   {
+    /* If you kept polled RX, this feeds the ring.
+       If you switched to the IRQ-driven RX I gave you, this will just rarely run. */
     uint8_t ch;
     if (USR_USART2_TryRead(&ch)) {
-      ring_add((char)ch);   // ring_add handles echo, backspace, enter, dump, prompt
+      ring_add((char)ch);
     }
 
-    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-    HAL_Delay(200);
+    if (ring_has_line()) {
+      char line[64];
+      int n = ring_read_line(line, sizeof(line));
+      int code = (n >= (int)(sizeof(line)-1)) ? CMD_OVF : parser(line);
+      act_on(code, line);
+      reset_after_parse();
+      printf("> ");
+    }
+
+    HAL_Delay(1);
   }
 }
 
+/* ======= System Clock & GPIO (simple HSI @ 16MHz) ======================= */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -69,15 +146,16 @@ static void MX_GPIO_Init(void)
 
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Pin = LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 }
 
+/* ======= Error Handler =================================================== */
 void Error_Handler(void)
 {
   __disable_irq();

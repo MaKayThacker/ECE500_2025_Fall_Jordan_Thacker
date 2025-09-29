@@ -24,3 +24,7 @@ Release/
 *.user
 .ioc-local
 mxconfig/**
+Debug/
+*.o
+*.elf
+*.map
