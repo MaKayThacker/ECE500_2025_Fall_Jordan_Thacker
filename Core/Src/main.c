@@ -1,66 +1,59 @@
 #include "stm32g0xx.h"
 #include "usr_clock.h"
 #include "usr_usart.h"
+#include "i2c1.h"
 #include <stdio.h>
+#include <stdarg.h>
 
-#define LED_GPIO GPIOA
-#define LED_PIN  5u
-#define LED_MASK (1u << LED_PIN)
-
-static inline void led_toggle(void) { LED_GPIO->ODR ^= LED_MASK; }
-
-static void systick_reinit_1ms(void) {
-    SysTick->CTRL = 0;
-    SysTick->VAL  = 0;
-    SysTick->LOAD = (SystemCoreClock / 1000u) - 1u;
-    SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk |
-                    SysTick_CTRL_TICKINT_Msk   |
-                    SysTick_CTRL_ENABLE_Msk;
-    NVIC_SetPriority(SysTick_IRQn, 0x0F);
+static void delay_ms(uint32_t ms)
+{
+    for (uint32_t i = 0; i < ms; ++i)
+        for (volatile uint32_t j = 0; j < 32000u; ++j) { __NOP(); }
 }
 
-/* forward from usr_clock.c */
-extern uint8_t usr_clock_is_32mhz(void);
+static int tmp102_read_celsius(float *out_c)
+{
+    const uint8_t a = 0x48;
+    uint8_t b[2];
+    delay_ms(5);
+    int rc = I2C1_MemRead(a, 0x00, b, 2);
+    if (rc) return rc;
 
-/* Tiny runtime reporter so we can print what the chip latched */
-static uint32_t usr_report_sysclk_hz(void) {
-    (void)((RCC->CFGR & RCC_CFGR_SWS) >> RCC_CFGR_SWS_Pos); /* SWS available if you want it */
-    return SystemCoreClock; /* maintained in USR_SystemClock_Config() */
+    int16_t raw = ((int16_t)b[0] << 8) | b[1];
+    raw >>= 4;
+    if (raw & 0x0800) raw |= 0xF000;
+    *out_c = (float)raw * 0.0625f;
+    return 0;
 }
 
 int main(void)
 {
-    HAL_Init();
     USR_SystemClock_Config();
-    systick_reinit_1ms();
+    USR2_USART2_Init(115200);
+    usr2_usart2_write("\r\n=== ECE500 6.2: I2C/TMP102 demo ===\r\n");
+    usr2_usart2_write(usr_clock_is_32mhz() ? "Clock OK: 32 MHz\r\n" : "Clock Fallback: 16 MHz\r\n");
 
-    USR2_USART2_Init(115200u);
+    I2C1_Init_PB8PB9_100k_HSI16();
 
-    if (usr_clock_is_32mhz()) {
-        usr2_usart2_write("\r\n[Boot] SYSCLK=32MHz (PLL), PCLK=32MHz, USART2=115200\r\n");
-    } else {
-        usr2_usart2_write("\r\n[Boot] SYSCLK=16MHz (HSI fallback), PCLK=16MHz, USART2=115200\r\n");
-        usr2_usart2_write("WARNING: PLL switch failed; running on HSI16.\r\n");
-    }
+    uint8_t probe[2];
+    if (I2C1_MemRead(0x48, 0x00, probe, 2) == 0) usr2_usart2_write("TMP102 present\r\n");
+    else                                         usr2_usart2_write("TMP102 not responding\r\n");
 
-    /* Extra clock report for grading/telemetry */
-    {
-        char buf[96];
-        unsigned long sws = (unsigned long)((RCC->CFGR & RCC_CFGR_SWS) >> RCC_CFGR_SWS_Pos);
-        unsigned long hz  = (unsigned long)usr_report_sysclk_hz();
-        snprintf(buf, sizeof buf, "[Clock] SWS=%lu (3=PLLR), SystemCoreClock=%lu Hz\r\n", sws, hz);
-        usr2_usart2_write(buf);
-    }
-
-    usr2_usart2_write("Blinking LED at 1 Hz...\r\n");
     while (1) {
-        led_toggle();
-        HAL_Delay(1000);
+        float tC;
+        int rc = tmp102_read_celsius(&tC);
+        if (rc == 0) {
+            int temp100 = (int)(tC * 100.0f);
+            int whole = temp100 / 100;
+            int frac  = (temp100 < 0 ? -temp100 : temp100) % 100;
+            char msg[32];
+            sprintf(msg, "Temp: %d.%02d C\r\n", whole, frac);
+            usr2_usart2_write(msg);
+        } else {
+            char msg[32];
+            sprintf(msg, "I2C error: %d\r\n", rc);
+            usr2_usart2_write(msg);
+        }
+        delay_ms(1000);
     }
-}
-
-void Error_Handler(void)
-{
-    __disable_irq();
-    while (1) { led_toggle(); }
 }
