@@ -55,3 +55,77 @@ int I2C1_MemRead(uint8_t addr7, uint8_t reg, uint8_t *buf, uint32_t len)
     I2C1->ICR = I2C_ICR_STOPCF;
     return 0;
 }
+
+int I2C1_MemWrite(uint8_t addr7, uint8_t reg, const uint8_t *buf, uint32_t len)
+{
+    if (!buf || !len) return -1;
+    while (I2C1->ISR & I2C_ISR_BUSY) { }
+
+    /* write reg + data (NBYTES = len + 1) */
+    I2C1->CR2 = ((uint32_t)addr7 << 1) | ((len + 1u) << 16);
+    I2C1->CR2 &= ~I2C_CR2_RD_WRN;                 /* write */
+    I2C1->CR2 |= I2C_CR2_START | I2C_CR2_AUTOEND; /* auto STOP */
+
+    /* send register pointer */
+    while (!(I2C1->ISR & I2C_ISR_TXIS)) {
+        if (I2C1->ISR & I2C_ISR_NACKF) { I2C1->ICR = I2C_ICR_NACKCF; return -2; }
+    }
+    I2C1->TXDR = reg;
+
+    /* send payload bytes */
+    for (uint32_t i = 0; i < len; ++i) {
+        while (!(I2C1->ISR & I2C_ISR_TXIS)) {
+            if (I2C1->ISR & I2C_ISR_NACKF) { I2C1->ICR = I2C_ICR_NACKCF; return -3; }
+        }
+        I2C1->TXDR = buf[i];
+    }
+
+    /* wait for STOP */
+    while (!(I2C1->ISR & I2C_ISR_STOPF)) { }
+    I2C1->ICR = I2C_ICR_STOPCF;
+    return 0;
+}
+
+/* TMP102 initialization:
+   - Probes device @0x48
+   - Ensures CONFIG register is sane (12-bit, continuous conversion, CR=4Hz)
+   - Leaves pointer on temperature register (0x00) and verifies a temp read
+*/
+HAL_StatusTypeDef tmp102_initialize(void)
+{
+    const uint8_t addr = 0x48;
+
+    /* 1) Probe by reading two bytes of temperature (register 0x00) */
+    uint8_t temp_raw[2];
+    if (I2C1_MemRead(addr, 0x00, temp_raw, 2) != 0) {
+        return HAL_ERROR;
+    }
+
+    /* 2) Read current CONFIG (register 0x01) */
+    uint8_t cfg[2];
+    if (I2C1_MemRead(addr, 0x01, cfg, 2) != 0) {
+        return HAL_ERROR;
+    }
+
+    /* Desired config:
+       MSB: 0x60 => TM=0 (comparator), POL=0 (active low), FQE=0, R=0, OS=0
+       LSB: 0xA0 => CR1..0=10 (4 Hz), SD=0 (continuous), EM=0 (12-bit), AL=0
+       This matches TMP102 defaults and is a safe, continuous 12-bit setup.
+    */
+    const uint8_t desired_cfg[2] = { 0x60, 0xA0 };
+
+    /* 3) If different, write back the desired configuration */
+    if (cfg[0] != desired_cfg[0] || cfg[1] != desired_cfg[1]) {
+        if (I2C1_MemWrite(addr, 0x01, desired_cfg, 2) != 0) {
+            return HAL_ERROR;
+        }
+    }
+
+    /* 4) Point register pointer back to temperature (0x00) and verify read */
+    if (I2C1_MemRead(addr, 0x00, temp_raw, 2) != 0) {
+        return HAL_ERROR;
+    }
+
+    return HAL_OK;
+}
+

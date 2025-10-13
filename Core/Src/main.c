@@ -35,6 +35,11 @@ int main(void)
 
     I2C1_Init_PB8PB9_100k_HSI16();
 
+    if (tmp102_initialize() == HAL_OK)
+        usr2_usart2_write("TMP102 init OK\r\n");
+    else
+        usr2_usart2_write("TMP102 init FAILED\r\n");
+
     uint8_t probe[2];
     if (I2C1_MemRead(0x48, 0x00, probe, 2) == 0) usr2_usart2_write("TMP102 present\r\n");
     else                                         usr2_usart2_write("TMP102 not responding\r\n");
