@@ -49,9 +49,12 @@ void USR_SystemClock_Config(void)
                 (0u << RCC_CFGR_PPRE_Pos) |
                 (0b01u << RCC_CFGR_SW_Pos);   /* 01 = HSI */
 
-    /* ----- Flash wait state: 1 WS for 32 MHz ----- */
+    /* ----- Flash wait state: 1 WS for 32 MHz + enable prefetch ----- */
 #if defined(FLASH_ACR_LATENCY_Pos)
     FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | (0x1u << FLASH_ACR_LATENCY_Pos);
+#endif
+#if defined(FLASH_ACR_PRFTEN)
+    FLASH->ACR |= FLASH_ACR_PRFTEN;           /* prefetch recommended at higher freq */
 #endif
 
     /* ----- PLL: HSI16 * N=8 / R=4 => 32 MHz ----- */
