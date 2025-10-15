@@ -1,3 +1,4 @@
+#pragma once
 #ifndef RETARGET_H
 #define RETARGET_H
 int __io_putchar(int ch);
