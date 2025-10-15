@@ -10,3 +10,4 @@
 HAL_StatusTypeDef tmp102_initialize(void);
 HAL_StatusTypeDef tmp102_trigger_oneshot(void);
 HAL_StatusTypeDef tmp102_read_celsius(float *c_out);
+HAL_StatusTypeDef tmp102_read_raw(int16_t *raw_out);

@@ -47,3 +47,20 @@ HAL_StatusTypeDef tmp102_read_celsius(float *c_out)
     *c_out = (float)raw * 0.0625f;
     return HAL_OK;
 }
+
+HAL_StatusTypeDef tmp102_read_raw(int16_t *raw_out)
+{
+    if (!raw_out) return HAL_ERROR;
+
+    uint8_t rx[2];
+    if (I2C1_MemRead(TMP102_ADDR7, TMP102_REG_TEMP, rx, 2))
+        return HAL_ERROR;
+
+    int16_t raw = ((int16_t)rx[0] << 8) | rx[1];
+    raw >>= 4;
+    if (raw & 0x0800) raw |= (int16_t)~0x0FFF;
+
+    *raw_out = raw;
+    return HAL_OK;
+}
+
