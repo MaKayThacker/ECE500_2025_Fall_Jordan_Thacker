@@ -22,6 +22,16 @@ void USR_USART2_UART_Init(uint32_t baudrate);
 /* Non-blocking read: returns true if a byte was read into *ch, false if none. */
 bool USR_USART2_TryRead(uint8_t *ch);
 
+
+/* Register-level USART2 init & TX helpers */
+void     USR2_USART2_Init(uint32_t baud);
+void     usr2_usart2_write(const char *s);
+void     usr2_usart2_write_char(char c);
+
+void    USR_SystemClock_Config(void);
+uint8_t usr_clock_is_32mhz(void);
+
+
 #ifdef __cplusplus
 }
 #endif

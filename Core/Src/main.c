@@ -4,10 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "usr_clock.h"      // USR_SystemClock_Config, usr_clock_is_32mhz
-#include "usr_usart.h"      // USR2_USART2_Init, usr2_usart2_write
-#include "i2c1.h"           // I2C1_Init_PB8PB9_100k_HSI16
-#include "tmp102.h"         // tmp102_initialize / trigger_oneshot / read_raw
+#include "usart.h"
+#include "i2c1_tmp102.h"           // I2C1_Init_PB8PB9_100k_HSI16
 
 /* tiny printf -> your UART */
 static void putf(const char *fmt, ...)
