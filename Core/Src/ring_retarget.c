@@ -1,7 +1,21 @@
-#include "ringbuffer.h"
+#include "main.h"
+#include "usart.h"
+#include "ring_retarget.h"
 #include <stdio.h>
-#include <stdint.h>
-#include <stddef.h>
+
+
+/* Provided by usart.c */
+void USR_USART2_WriteByte(uint8_t b);
+
+
+int __io_putchar(int ch)
+{
+if (ch == '\n') {
+USR_USART2_WriteByte('\r');
+}
+USR_USART2_WriteByte((uint8_t)ch);
+return ch;
+}
 
 /* Retarget prototype */
 int __io_putchar(int ch);
@@ -77,3 +91,4 @@ int ring_read_line(char *dst, size_t dstlen){
     }
     lines=0u; if (n<dstlen) dst[n]='\0'; return (int)n;
 }
+
