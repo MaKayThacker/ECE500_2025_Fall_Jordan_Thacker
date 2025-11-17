@@ -61,7 +61,7 @@ main-build: ECE500_2025_Fall_Jordan_Thacker.elf secondary-outputs
 
 # Tool invocations
 ECE500_2025_Fall_Jordan_Thacker.elf ECE500_2025_Fall_Jordan_Thacker.map: $(OBJS) $(USER_OBJS) C:\Users\Pengu\STM32CubeIDE\workspace_1.19.0\ECE500_2025_Fall_Jordan_Thacker\STM32G071RBTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "ECE500_2025_Fall_Jordan_Thacker.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\Users\Pengu\STM32CubeIDE\workspace_1.19.0\ECE500_2025_Fall_Jordan_Thacker\STM32G071RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="ECE500_2025_Fall_Jordan_Thacker.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "ECE500_2025_Fall_Jordan_Thacker.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0plus -T"C:\Users\Pengu\STM32CubeIDE\workspace_1.19.0\ECE500_2025_Fall_Jordan_Thacker\STM32G071RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="ECE500_2025_Fall_Jordan_Thacker.map" -Wl,--gc-sections -static -u _printf_float --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

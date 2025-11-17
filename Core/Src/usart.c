@@ -319,3 +319,14 @@ void USR_SystemClock_Config(void)
     RCC->CCIPR &= ~RCC_CCIPR_USART2SEL_Msk;
 #endif
 }
+
+/* CubeMX-compat wrapper so main.c can call MX_USART2_UART_Init()
+ * without depending on generated usart.c. This delegates to our
+ * robust USR_USART2_UART_Init and sets up the ring retarget. */
+void MX_USART2_UART_Init(void)
+{
+    /* Ensure system clock is configured (optional if already done) */
+    /* USR_SystemClock_Config(); */ /* leave to main if needed */
+    USR_USART2_UART_Init(115200u);
+    ring_init();
+}

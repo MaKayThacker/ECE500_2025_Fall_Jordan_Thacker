@@ -5,31 +5,43 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../Core/Src/fram_spi.c \
+../Core/Src/i2c1_tmp102.c \
 ../Core/Src/main.c \
-../Core/Src/retarget.c \
+../Core/Src/ring_retarget.c \
 ../Core/Src/stm32g0xx_hal_msp.c \
 ../Core/Src/stm32g0xx_it.c \
+../Core/Src/stm32g0xx_it_usart_stub.c \
 ../Core/Src/syscalls.c \
 ../Core/Src/sysmem.c \
-../Core/Src/system_stm32g0xx.c 
+../Core/Src/system_stm32g0xx.c \
+../Core/Src/usart.c 
 
 OBJS += \
+./Core/Src/fram_spi.o \
+./Core/Src/i2c1_tmp102.o \
 ./Core/Src/main.o \
-./Core/Src/retarget.o \
+./Core/Src/ring_retarget.o \
 ./Core/Src/stm32g0xx_hal_msp.o \
 ./Core/Src/stm32g0xx_it.o \
+./Core/Src/stm32g0xx_it_usart_stub.o \
 ./Core/Src/syscalls.o \
 ./Core/Src/sysmem.o \
-./Core/Src/system_stm32g0xx.o 
+./Core/Src/system_stm32g0xx.o \
+./Core/Src/usart.o 
 
 C_DEPS += \
+./Core/Src/fram_spi.d \
+./Core/Src/i2c1_tmp102.d \
 ./Core/Src/main.d \
-./Core/Src/retarget.d \
+./Core/Src/ring_retarget.d \
 ./Core/Src/stm32g0xx_hal_msp.d \
 ./Core/Src/stm32g0xx_it.d \
+./Core/Src/stm32g0xx_it_usart_stub.d \
 ./Core/Src/syscalls.d \
 ./Core/Src/sysmem.d \
-./Core/Src/system_stm32g0xx.d 
+./Core/Src/system_stm32g0xx.d \
+./Core/Src/usart.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -39,7 +51,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/retarget.cyclo ./Core/Src/retarget.d ./Core/Src/retarget.o ./Core/Src/retarget.su ./Core/Src/stm32g0xx_hal_msp.cyclo ./Core/Src/stm32g0xx_hal_msp.d ./Core/Src/stm32g0xx_hal_msp.o ./Core/Src/stm32g0xx_hal_msp.su ./Core/Src/stm32g0xx_it.cyclo ./Core/Src/stm32g0xx_it.d ./Core/Src/stm32g0xx_it.o ./Core/Src/stm32g0xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32g0xx.cyclo ./Core/Src/system_stm32g0xx.d ./Core/Src/system_stm32g0xx.o ./Core/Src/system_stm32g0xx.su
+	-$(RM) ./Core/Src/fram_spi.cyclo ./Core/Src/fram_spi.d ./Core/Src/fram_spi.o ./Core/Src/fram_spi.su ./Core/Src/i2c1_tmp102.cyclo ./Core/Src/i2c1_tmp102.d ./Core/Src/i2c1_tmp102.o ./Core/Src/i2c1_tmp102.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/ring_retarget.cyclo ./Core/Src/ring_retarget.d ./Core/Src/ring_retarget.o ./Core/Src/ring_retarget.su ./Core/Src/stm32g0xx_hal_msp.cyclo ./Core/Src/stm32g0xx_hal_msp.d ./Core/Src/stm32g0xx_hal_msp.o ./Core/Src/stm32g0xx_hal_msp.su ./Core/Src/stm32g0xx_it.cyclo ./Core/Src/stm32g0xx_it.d ./Core/Src/stm32g0xx_it.o ./Core/Src/stm32g0xx_it.su ./Core/Src/stm32g0xx_it_usart_stub.cyclo ./Core/Src/stm32g0xx_it_usart_stub.d ./Core/Src/stm32g0xx_it_usart_stub.o ./Core/Src/stm32g0xx_it_usart_stub.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32g0xx.cyclo ./Core/Src/system_stm32g0xx.d ./Core/Src/system_stm32g0xx.o ./Core/Src/system_stm32g0xx.su ./Core/Src/usart.cyclo ./Core/Src/usart.d ./Core/Src/usart.o ./Core/Src/usart.su
 
 .PHONY: clean-Core-2f-Src
 

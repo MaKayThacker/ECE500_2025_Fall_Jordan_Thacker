@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "stm32g0xx_hal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,3 +37,7 @@ uint8_t usr_clock_is_32mhz(void);
 }
 #endif
 #endif /* USR_USART_H */
+
+extern UART_HandleTypeDef huart2;
+
+void MX_USART2_UART_Init(void);

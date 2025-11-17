@@ -91,4 +91,3 @@ int ring_read_line(char *dst, size_t dstlen){
     }
     lines=0u; if (n<dstlen) dst[n]='\0'; return (int)n;
 }
-
