@@ -1,6 +1,4 @@
-
 #include "fram_spi.h"
-#include "stm32g0xx_hal.h"
 #include <string.h>
 
 /* ---- FRAM layout (addresses in bytes) ---- */
@@ -10,82 +8,48 @@
 #define FRAM_BYTES             8192u
 #define FRAM_MAX_ADDR          (FRAM_BYTES - 1u)
 
-SPI_HandleTypeDef hspi1;
-
 /* runtime state */
 static volatile uint8_t  g_logging_enabled = 0u;
 static uint16_t g_first_addr = FRAM_DATA_START;
 static uint16_t g_last_addr  = FRAM_DATA_START - 2u;   /* “no data yet” sentinel */
 
-/* ---- Optional WP pin: define here if routed; otherwise this is a no-op ---- */
-#ifndef FRAM_WP_GPIO_Port
-#define FRAM_WP_GPIO_Port  GPIOC
-#endif
-#ifndef FRAM_WP_Pin
-#define FRAM_WP_Pin        GPIO_PIN_7
-#endif
+static void fram_reload_address_words(void);
+static HAL_StatusTypeDef fram_write_u16(uint16_t addr, uint16_t value);
+static HAL_StatusTypeDef fram_read_u16(uint16_t addr, uint16_t* out);
 
 /* =========================
- * Minimal bring-up helpers
+ * Helper utilities
  * ========================= */
-void FRAM_SPI_PeriphInit(void)
+static void fram_reload_address_words(void)
 {
-    /* Ensure GPIO clocks */
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
+    uint16_t first = 0xFFFFu;
+    uint16_t last  = 0xFFFFu;
 
-    /* Configure PB3 as SPI1_SCK AF0 */
-    GPIO_InitTypeDef gi = {0};
-    gi.Pin       = GPIO_PIN_3;
-    gi.Mode      = GPIO_MODE_AF_PP;
-    gi.Pull      = GPIO_NOPULL;
-    gi.Speed     = GPIO_SPEED_FREQ_HIGH;
-    gi.Alternate = GPIO_AF0_SPI1;
-    HAL_GPIO_Init(GPIOB, &gi);
+    (void)fram_read_u16(FRAM_WORD_FIRST_ADDR, &first);
+    (void)fram_read_u16(FRAM_WORD_LAST_ADDR,  &last);
 
-    /* Configure PA6 MISO, PA7 MOSI AF0 */
-    gi.Pin = GPIO_PIN_6 | GPIO_PIN_7;
-    gi.Alternate = GPIO_AF0_SPI1;
-    HAL_GPIO_Init(GPIOA, &gi);
-    
+    if (first == 0xFFFFu && last == 0xFFFFu)
+    {
+        g_first_addr = FRAM_DATA_START;
+        g_last_addr  = FRAM_DATA_START - 2u;
+        (void)fram_write_u16(FRAM_WORD_FIRST_ADDR, g_first_addr);
+        (void)fram_write_u16(FRAM_WORD_LAST_ADDR,  g_last_addr);
+        return;
+    }
 
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;   // Mode 0
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;       // Mode 0
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32; // ~500 kbit/s at 16 MHz
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 7;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
+    if (first < FRAM_DATA_START || first > FRAM_MAX_ADDR)
+    {
+        first = FRAM_DATA_START;
+    }
 
-  if (HAL_SPI_Init(&hspi1) != HAL_OK) {
-    // If you have an error handler, call it here
-    // Error_Handler();
-  }
-}
+    uint16_t min_last = (uint16_t)(first - 2u);
+    if (last < min_last || last > FRAM_MAX_ADDR)
+    {
+        last = min_last;
+    }
 
-void FRAM_SPI_GPIO_Init(void)
-{
-    /* Enable GPIO clocks for CS/WP ports */
-    if (FRAM_CS_GPIO_Port == GPIOA || FRAM_WP_GPIO_Port == GPIOA) __HAL_RCC_GPIOA_CLK_ENABLE();
-    if (FRAM_CS_GPIO_Port == GPIOB || FRAM_WP_GPIO_Port == GPIOB) __HAL_RCC_GPIOB_CLK_ENABLE();
-    if (FRAM_CS_GPIO_Port == GPIOC || FRAM_WP_GPIO_Port == GPIOC) __HAL_RCC_GPIOC_CLK_ENABLE();
-
-    GPIO_InitTypeDef gi = {0};
-    gi.Mode = GPIO_MODE_OUTPUT_PP;
-    gi.Pull = GPIO_NOPULL;
-    gi.Speed = GPIO_SPEED_FREQ_HIGH;
-    gi.Pin = FRAM_CS_Pin; HAL_GPIO_Init(FRAM_CS_GPIO_Port, &gi);
-    gi.Pin = FRAM_WP_Pin; HAL_GPIO_Init(FRAM_WP_GPIO_Port, &gi);
-
-    /* Deselect FRAM and disable write-protect -> CS=HIGH, WP=HIGH */
-    HAL_GPIO_WritePin(FRAM_CS_GPIO_Port, FRAM_CS_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(FRAM_WP_GPIO_Port, FRAM_WP_Pin, GPIO_PIN_SET);
+    g_first_addr = first;
+    g_last_addr  = last;
 }
 
 /* =========================
@@ -111,24 +75,66 @@ uint8_t fram_rdsr(void)
     return sr;
 }
 
+/* FRAM API: raw read/write */
 HAL_StatusTypeDef fram_read(uint16_t addr, uint8_t* buf, size_t len)
 {
-    uint8_t hdr[3] = { 0x03u, (uint8_t)(addr >> 8), (uint8_t)addr };
+    if (buf == NULL || len == 0u)
+    {
+        return HAL_OK; /* nothing to do */
+    }
+
+    if (addr > FRAM_MAX_ADDR)
+    {
+        return HAL_ERROR;
+    }
+
+    /* Clamp length so we don't run past FRAM end */
+    size_t maxLen = (size_t)(FRAM_BYTES - addr);
+    if (len > maxLen)
+    {
+        len = maxLen;
+    }
+
+    uint8_t hdr[3] = { 0x03u, (uint8_t)(addr >> 8), (uint8_t)addr }; /* READ opcode */
     FRAM_CS_LOW();
     HAL_StatusTypeDef st = HAL_SPI_Transmit(&hspi1, hdr, 3, HAL_MAX_DELAY);
-    if (st == HAL_OK) st = HAL_SPI_Receive(&hspi1, buf, len, HAL_MAX_DELAY);
+    if (st == HAL_OK)
+    {
+        st = HAL_SPI_Receive(&hspi1, buf, len, HAL_MAX_DELAY);
+    }
     FRAM_CS_HIGH();
     return st;
 }
 
 HAL_StatusTypeDef fram_write(uint16_t addr, const uint8_t* buf, size_t len)
 {
+    if (buf == NULL || len == 0u)
+    {
+        return HAL_OK; /* nothing to do */
+    }
+
+    if (addr > FRAM_MAX_ADDR)
+    {
+        return HAL_ERROR;
+    }
+
+    /* Clamp length so we don't run past FRAM end */
+    size_t maxLen = (size_t)(FRAM_BYTES - addr);
+    if (len > maxLen)
+    {
+        len = maxLen;
+    }
+
     HAL_StatusTypeDef st = fram_wren();
     if (st != HAL_OK) return st;
-    uint8_t hdr[3] = { 0x02u, (uint8_t)(addr >> 8), (uint8_t)addr };
+
+    uint8_t hdr[3] = { 0x02u, (uint8_t)(addr >> 8), (uint8_t)addr }; /* WRITE opcode */
     FRAM_CS_LOW();
     st = HAL_SPI_Transmit(&hspi1, hdr, 3, HAL_MAX_DELAY);
-    if (st == HAL_OK) st = HAL_SPI_Transmit(&hspi1, (uint8_t*)buf, len, HAL_MAX_DELAY);
+    if (st == HAL_OK)
+    {
+        st = HAL_SPI_Transmit(&hspi1, (uint8_t*)buf, len, HAL_MAX_DELAY);
+    }
     FRAM_CS_HIGH();
     return st;
 }
@@ -139,31 +145,32 @@ static HAL_StatusTypeDef fram_write_u16(uint16_t a, uint16_t v)
     uint8_t be[2] = { (uint8_t)(v >> 8), (uint8_t)(v & 0xFF) };
     return fram_write(a, be, 2);
 }
+
 static HAL_StatusTypeDef fram_read_u16(uint16_t a, uint16_t* out)
 {
     uint8_t be[2] = {0,0};
     HAL_StatusTypeDef st = fram_read(a, be, 2);
-    if (st == HAL_OK && out) *out = ((uint16_t)be[0] << 8) | be[1];
+    if (st == HAL_OK && out)
+    {
+        *out = ((uint16_t)be[0] << 8) | be[1];
+    }
     return st;
 }
 
 /* returns 1 if the two address words look uninitialized (0xFFFF/0xFFFF or out of range) */
-static int fram_address_words_empty(void)
+void fram_init_state(void)
 {
-    uint16_t f = 0xFFFF, l = 0xFFFF;
-    (void)fram_read_u16(FRAM_WORD_FIRST_ADDR, &f);
-    (void)fram_read_u16(FRAM_WORD_LAST_ADDR,  &l);
-    if (f == 0xFFFF && l == 0xFFFF) return 1;                  /* factory/cleared */
-    if (f < FRAM_DATA_START || f > FRAM_MAX_ADDR) return 1;    /* nonsense */
-    if (l < (FRAM_DATA_START - 2) || l > FRAM_MAX_ADDR) return 1;
-    if ((uint32_t)l + 2u > (uint32_t)FRAM_MAX_ADDR + 1u) return 1;
-    return 0;
+    g_logging_enabled = 0u;
+    fram_reload_address_words();
 }
 
 /* =========================
  * Assignment commands
  * ========================= */
-bool fram_logging_enabled(void){ return g_logging_enabled != 0u; }
+bool fram_logging_enabled(void)
+{
+    return g_logging_enabled != 0u;
+}
 
 HAL_StatusTypeDef fram_get_first_last(uint16_t* first, uint16_t* last)
 {
@@ -174,17 +181,8 @@ HAL_StatusTypeDef fram_get_first_last(uint16_t* first, uint16_t* last)
 
 void fram_cmd_start(void)
 {
+    fram_reload_address_words();
     g_logging_enabled = 1u;
-
-    if (fram_address_words_empty()) {
-        g_first_addr = FRAM_DATA_START;
-        g_last_addr  = FRAM_DATA_START - 2u;   /* no samples yet */
-        (void)fram_write_u16(FRAM_WORD_FIRST_ADDR, g_first_addr);
-        (void)fram_write_u16(FRAM_WORD_LAST_ADDR,  g_last_addr);
-    } else {
-        (void)fram_read_u16(FRAM_WORD_FIRST_ADDR, &g_first_addr);
-        (void)fram_read_u16(FRAM_WORD_LAST_ADDR,  &g_last_addr);
-    }
 }
 
 void fram_cmd_stop(void)
@@ -194,30 +192,52 @@ void fram_cmd_stop(void)
 
 void fram_cmd_clear(void)
 {
-    /* Mark header as empty by writing 0xFFFF to both words */
-    uint16_t ff = 0xFFFFu;
-    (void)fram_write(FRAM_WORD_FIRST_ADDR, (uint8_t*)&ff, 2);
-    (void)fram_write(FRAM_WORD_LAST_ADDR,  (uint8_t*)&ff, 2);
+    g_logging_enabled = 0u;
+
+    uint8_t blank[32];
+    memset(blank, 0xFF, sizeof(blank));
+    for (uint16_t addr = 0u; addr < FRAM_BYTES; addr = (uint16_t)(addr + (uint16_t)sizeof(blank)))
+    {
+        size_t remaining = (size_t)(FRAM_BYTES - addr);
+        size_t chunk = remaining < sizeof(blank) ? remaining : sizeof(blank);
+        (void)fram_write(addr, blank, chunk);
+    }
+
     g_first_addr = FRAM_DATA_START;
     g_last_addr  = FRAM_DATA_START - 2u;
+    (void)fram_write_u16(FRAM_WORD_FIRST_ADDR, g_first_addr);
+    (void)fram_write_u16(FRAM_WORD_LAST_ADDR,  g_last_addr);
 }
 
 /* Pass the raw 16-bit TMP102 reading here once per second */
-void fram_log_sample_on_data(uint16_t tmp102_raw)
+HAL_StatusTypeDef fram_log_sample(uint16_t tmp102_raw)
 {
-    if (!g_logging_enabled) return;
-
-    uint16_t next = (uint16_t)(g_last_addr + 2u);
-    if (next > (FRAM_MAX_ADDR - 1u)) {
-        /* out of space – stop logging gracefully */
-        g_logging_enabled = 0u;
-        return;
+    if (!g_logging_enabled)
+    {
+        return HAL_OK;
     }
 
-    /* store as two bytes, big-endian */
-    (void)fram_write_u16(next, (uint16_t)tmp102_raw);
+    uint16_t next = (uint16_t)(g_last_addr + 2u);
+    if (next > (FRAM_MAX_ADDR - 1u))
+    {
+        g_logging_enabled = 0u;
+        return HAL_ERROR;
+    }
 
-    /* update last address word in FRAM */
+    HAL_StatusTypeDef st = fram_write_u16(next, tmp102_raw);
+    if (st != HAL_OK)
+    {
+        g_logging_enabled = 0u;
+        return st;
+    }
+
+    if (g_last_addr < g_first_addr)
+    {
+        g_first_addr = next;
+        (void)fram_write_u16(FRAM_WORD_FIRST_ADDR, g_first_addr);
+    }
+
     g_last_addr = next;
     (void)fram_write_u16(FRAM_WORD_LAST_ADDR, g_last_addr);
+    return HAL_OK;
 }
