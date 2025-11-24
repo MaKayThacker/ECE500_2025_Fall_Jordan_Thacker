@@ -18,6 +18,7 @@ extern "C" {
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
+void HAL_GPIO_EXTI_IRQHandler(uint16_t GPIO_Pin);
 
 /* USER CODE BEGIN EFP */
 /* USER CODE END EFP */

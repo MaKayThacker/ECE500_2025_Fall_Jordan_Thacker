@@ -20,61 +20,54 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32g0xx_it.h"
+#include "stm32g0xx_hal_gpio.h"
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
-
 /* USER CODE END TD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-
 /* USER CODE BEGIN EV */
-
 /* USER CODE END EV */
 
 /******************************************************************************/
-/*           Cortex-M0+ Processor Interruption and Exception Handlers          */
+/*           Cortex-M0+ Processor Interruption and Exception Handlers         */
 /******************************************************************************/
+
 /**
   * @brief This function handles Non maskable interrupt.
   */
 void NMI_Handler(void)
 {
   /* USER CODE BEGIN NonMaskableInt_IRQn 0 */
-
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-   while (1)
-  {
-  }
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
@@ -84,7 +77,6 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -99,10 +91,8 @@ void HardFault_Handler(void)
 void SVC_Handler(void)
 {
   /* USER CODE BEGIN SVC_IRQn 0 */
-
   /* USER CODE END SVC_IRQn 0 */
   /* USER CODE BEGIN SVC_IRQn 1 */
-
   /* USER CODE END SVC_IRQn 1 */
 }
 
@@ -112,10 +102,8 @@ void SVC_Handler(void)
 void PendSV_Handler(void)
 {
   /* USER CODE BEGIN PendSV_IRQn 0 */
-
   /* USER CODE END PendSV_IRQn 0 */
   /* USER CODE BEGIN PendSV_IRQn 1 */
-
   /* USER CODE END PendSV_IRQn 1 */
 }
 
@@ -125,37 +113,74 @@ void PendSV_Handler(void)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-
   /* USER CODE END SysTick_IRQn 1 */
 }
 
 /******************************************************************************/
 /* STM32G0xx Peripheral Interrupt Handlers                                    */
-/* Add here the Interrupt Handlers for the used peripherals.                  */
-/* For the available peripheral interrupt handler names,                      */
-/* please refer to the startup file (startup_stm32g0xx.s).                    */
 /******************************************************************************/
 
 /**
   * @brief This function handles EXTI line 0 and 1 interrupts.
-  *        Used for motor encoder on PA0 (MOTOR_ENCODER_Pin).
+  *
+  * We *do not* use HAL_GPIO_EXTI_IRQHandler here; instead we:
+  *  - check the raw EXTI pending flag for line 0
+  *  - clear it
+  *  - call HAL_GPIO_EXTI_Callback(MOTOR_ENCODER_Pin)
+  *
+  * This avoids any ambiguity about what the HAL helper expects.
   */
 void EXTI0_1_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI0_1_IRQn 0 */
 
-  /* USER CODE END EXTI0_1_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(MOTOR_ENCODER_Pin);
-  /* USER CODE BEGIN EXTI0_1_IRQn 1 */
+  /* Encoder is on PA0 -> EXTI line 0 */
+  const uint32_t line  = 0u;
+  const uint32_t mask  = (1u << line);
 
+  /* Rising-edge pending? */
+  if (EXTI->RPR1 & mask)
+  {
+    /* Clear pending flag */
+    EXTI->RPR1 = mask;
+
+    /* Call user callback defined in main.c */
+    HAL_GPIO_EXTI_Callback(MOTOR_ENCODER_Pin);
+  }
+
+  /* USER CODE END EXTI0_1_IRQn 0 */
+
+  /* USER CODE BEGIN EXTI0_1_IRQn 1 */
+  /* nothing more to do */
   /* USER CODE END EXTI0_1_IRQn 1 */
 }
 
+/**
+  * @brief EXTI line 2 and 3 interrupts.
+  * Not used in this project, left empty.
+  */
+void EXTI2_3_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI2_3_IRQn 0 */
+  /* USER CODE END EXTI2_3_IRQn 0 */
+  /* USER CODE BEGIN EXTI2_3_IRQn 1 */
+  /* USER CODE END EXTI2_3_IRQn 1 */
+}
+
+/**
+  * @brief EXTI line 4 to 15 interrupts.
+  * Not used in this project, left empty.
+  */
+void EXTI4_15_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI4_15_IRQn 0 */
+  /* USER CODE END EXTI4_15_IRQn 0 */
+  /* USER CODE BEGIN EXTI4_15_IRQn 1 */
+  /* USER CODE END EXTI4_15_IRQn 1 */
+}
+
 /* USER CODE BEGIN 1 */
-
 /* USER CODE END 1 */
-
