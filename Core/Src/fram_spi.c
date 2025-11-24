@@ -241,3 +241,54 @@ HAL_StatusTypeDef fram_log_sample(uint16_t tmp102_raw)
     (void)fram_write_u16(FRAM_WORD_LAST_ADDR, g_last_addr);
     return HAL_OK;
 }
+
+/* =========================
+ * New: iterate all logged samples and call a callback
+ * ========================= */
+HAL_StatusTypeDef fram_iterate_samples(void (*cb)(uint16_t index, uint16_t raw))
+{
+    if (cb == NULL)
+    {
+        return HAL_ERROR;
+    }
+
+    /* Ensure we have current first/last in RAM */
+    fram_reload_address_words();
+
+    if (g_last_addr < g_first_addr)
+    {
+        /* No data to dump */
+        return HAL_OK;
+    }
+
+    uint16_t addr  = g_first_addr;
+    uint16_t index = 0u;
+
+    while (1)
+    {
+        uint16_t raw = 0u;
+        HAL_StatusTypeDef st = fram_read_u16(addr, &raw);
+        if (st != HAL_OK)
+        {
+            return st;
+        }
+
+        cb(index, raw);
+
+        if (addr == g_last_addr)
+        {
+            break;  /* reached the last sample */
+        }
+
+        if (addr > (FRAM_MAX_ADDR - 1u))
+        {
+            /* Safety: shouldn't happen given address checks, but don't wander off. */
+            break;
+        }
+
+        addr  = (uint16_t)(addr + 2u);
+        index = (uint16_t)(index + 1u);
+    }
+
+    return HAL_OK;
+}

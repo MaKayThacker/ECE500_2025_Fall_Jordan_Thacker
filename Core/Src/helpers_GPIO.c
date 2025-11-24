@@ -99,7 +99,10 @@ void print_prompt(void)
 
 void print_help(void)
 {
-    printf("Commands: START, STOP, TEMP, CLEAN, STATUS, DUTYxx, HALT, HELP\r\n");
+    printf("Commands: START, STOP, TEMP, FRAM, CLEAN, STATUS, DUTYxx, HALT, HELP\r\n");
+    printf("Use START/STOP to control TMP102 -> FRAM logging.\r\n");
+    printf("Use TEMP to force a single new sample.\r\n");
+    printf("Use FRAM to dump all logged samples since last CLEAN.\r\n");
     printf("Use DUTY<0-100> to set the PWM duty cycle and enable RPM reporting.\r\n");
     printf("Use HALT to stop the motor drive and the RPM output.\r\n");
 }
@@ -202,6 +205,22 @@ void service_logging(void)
     print_prompt();
 
     next_log_ms = now + RPM_UPDATE_PERIOD_MS;
+}
+
+/* ------------- New: FRAM dump callback + command ------------------------ */
+
+/* Callback used by fram_iterate_samples() to print each stored sample */
+static void fram_dump_print_cb(uint16_t index, uint16_t raw)
+{
+    int c_tenths = 0;
+    int f_tenths = 0;
+    convert_tmp102_raw((int16_t)raw, &c_tenths, &f_tenths);
+
+    printf("FRAM[%lu]: raw=0x%04X -> %d.%01d C (%d.%01d F)\r\n",
+           (unsigned long)index,
+           (unsigned int)raw,
+           c_tenths / 10,  abs(c_tenths % 10),
+           f_tenths / 10, abs(f_tenths % 10));
 }
 
 /* Motor control / RPM -----------------------------------------------------*/
@@ -309,6 +328,29 @@ void handle_line(char *line)
     else if (strcmp(line, "TEMP") == 0)
     {
         dump_recent_session();
+    }
+    else if (strcmp(line, "FRAM") == 0)
+    {
+        uint16_t first = 0xFFFFu, last = 0xFFFFu;
+        (void)fram_get_first_last(&first, &last);
+
+        if (last < first)
+        {
+            printf("No logged samples. Use START to begin logging.\r\n");
+        }
+        else
+        {
+            printf("FRAM log dump (first=0x%04X last=0x%04X)\r\n", first, last);
+            HAL_StatusTypeDef st = fram_iterate_samples(fram_dump_print_cb);
+            if (st != HAL_OK)
+            {
+                printf("[FRAM] read error during dump (HAL=%d)\r\n", (int)st);
+            }
+            else
+            {
+                printf("[FRAM] end of log\r\n");
+            }
+        }
     }
     else if (strncmp(line, "DUTY", 4) == 0)
     {

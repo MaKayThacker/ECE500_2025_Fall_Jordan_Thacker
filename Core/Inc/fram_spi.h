@@ -16,6 +16,9 @@ HAL_StatusTypeDef fram_log_sample(uint16_t tmp102_raw);
 bool fram_logging_enabled(void);
 HAL_StatusTypeDef fram_get_first_last(uint16_t* first, uint16_t* last);
 
+HAL_StatusTypeDef fram_iterate_samples(void (*cb)(uint16_t index, uint16_t raw));
+
+
 /* ======= EDIT TO MATCH YOUR BOARD WIRING ======= */
 /* Chip Select (FRAM /CS) */
 #ifndef FRAM_CS_GPIO_Port
